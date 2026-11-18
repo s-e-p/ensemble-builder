@@ -13,12 +13,12 @@ package require Tcl 9.0
 namespace eval ::ensemble {
 namespace export ensemble
 #
-# run a part directly from the dict
+# run a part directly from the dict - bootstrap ensemble
 #
 proc ensemble {cmd args} {
 	variable ensemble
 
-	::apply [dict get $ensemble ensemble apply $cmd] {*}$args
+	apply [dict get $ensemble ensemble apply $cmd] {*}$args
 }
 
 #
@@ -29,7 +29,9 @@ proc ensemble {cmd args} {
 dict set ensemble ensemble apply part [list {name cmd args body} {
 	variable ensemble
 
-	dict set ensemble $name apply $cmd [list $args $body [uplevel namespace current]]
+	dict set ensemble $name apply $cmd [list\
+		$args $body [uplevel namespace current]
+	]
 } [namespace current]]
 
 #
@@ -43,7 +45,7 @@ ensemble part ensemble private {name cmd args body } {
 	variable ensemble
 
 	dict set ensemble $name private $cmd \
-		[list ::apply [list $args $body [uplevel namespace current]]]
+		[list apply [list $args $body [uplevel namespace current]]]
 }
 
 # 
@@ -110,7 +112,8 @@ ensemble part ensemble lambda {cmd sub} {
 
 			if {[llength $map] == 2} {
 				lassign $map cmd lambda
-				if {$cmd eq "::apply" && [llength $lambda] == 3}  {
+				if {$cmd eq "::apply" &&\
+						[llength $lambda] == 3}  {
 					return $lambda
 				}
 			}
@@ -130,7 +133,10 @@ ensemble part ensemble inject {ensemble {scope concat}} {
 	set ns [dict get $config -namespace]
 	dict unset config -namespace
 	dict set config -command $ensemble
-	{*}$scope [list namespace eval $ns [list namespace ensemble create {*}$config]]
+	{*}$scope [list namespace eval $ns [join [list\
+		[list namespace ensemble create {*}$config]\
+		[list namespace export $ensemble]
+	] \n]]
 }
 
 #
@@ -142,7 +148,9 @@ ensemble part ensemble build {{ns {}}}  {
 	if {$ns eq {}} {
 		set ns [uplevel namespace current]
 	}
-	set ns [::namespace eval $ns {::namespace code {::namespace ensemble create}}]
+	set ns [namespace eval $ns {namespace code\
+		{namespace ensemble create}}
+	]
 
 	dict for {name command} $ensemble {
 		set map [dict getdef $command map {}]
@@ -161,19 +169,25 @@ ensemble part ensemble build {{ns {}}}  {
 		set unknown [if {[dict size $private] > 0} {
 			set map [dict merge $map $private]
 			list ::apply [list {cmd sub args} {
-				dict getdef [namespace ensemble configure $cmd -map] $sub {}
+				dict getdef [namespace ensemble configure $cmd\
+					-map] $sub {}
 			} [namespace current]]
 		}]
 
-		eval $ns [list -command $name -map $map -subcommands $cmd -unknown $unknown]
+		eval $ns [list\
+			-command	$name\
+			-map		$map\
+			-subcommands	$cmd\
+			-unknown	$unknown
+		]
 	}
 	unset ensemble
 }
 
 #
-# build the ensemble
+# build the ensemble and replace the bootstrap proc
 #
-ensemble build
+	ensemble build
 }
 
 package provide ensemble-builder 1.0
